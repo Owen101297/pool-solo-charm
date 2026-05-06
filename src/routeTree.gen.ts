@@ -13,6 +13,7 @@ import { Route as ReportesRouteImport } from './routes/reportes'
 import { Route as PrestamosRouteImport } from './routes/prestamos'
 import { Route as PagosRouteImport } from './routes/pagos'
 import { Route as ClientesRouteImport } from './routes/clientes'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 
 const ReportesRoute = ReportesRouteImport.update({
@@ -35,6 +36,11 @@ const ClientesRoute = ClientesRouteImport.update({
   path: '/clientes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,6 +49,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/clientes': typeof ClientesRoute
   '/pagos': typeof PagosRoute
   '/prestamos': typeof PrestamosRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/clientes': typeof ClientesRoute
   '/pagos': typeof PagosRoute
   '/prestamos': typeof PrestamosRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/clientes': typeof ClientesRoute
   '/pagos': typeof PagosRoute
   '/prestamos': typeof PrestamosRoute
@@ -65,14 +74,22 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/clientes' | '/pagos' | '/prestamos' | '/reportes'
+  fullPaths: '/' | '/auth' | '/clientes' | '/pagos' | '/prestamos' | '/reportes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/clientes' | '/pagos' | '/prestamos' | '/reportes'
-  id: '__root__' | '/' | '/clientes' | '/pagos' | '/prestamos' | '/reportes'
+  to: '/' | '/auth' | '/clientes' | '/pagos' | '/prestamos' | '/reportes'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/clientes'
+    | '/pagos'
+    | '/prestamos'
+    | '/reportes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   ClientesRoute: typeof ClientesRoute
   PagosRoute: typeof PagosRoute
   PrestamosRoute: typeof PrestamosRoute
@@ -109,6 +126,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -121,6 +145,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   ClientesRoute: ClientesRoute,
   PagosRoute: PagosRoute,
   PrestamosRoute: PrestamosRoute,
@@ -129,3 +154,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
