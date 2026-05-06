@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
+import { getDashboardStats, listLoans, listPayments } from "@/lib/api";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -11,29 +13,33 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+const fmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
 function Dashboard() {
+  const stats = useQuery({ queryKey: ["stats"], queryFn: getDashboardStats });
+  const loans = useQuery({ queryKey: ["loans"], queryFn: listLoans });
+  const payments = useQuery({ queryKey: ["payments"], queryFn: listPayments });
+
+  const recentLoans = (loans.data ?? []).slice(0, 4);
+  const recentPayments = (payments.data ?? []).slice(0, 3);
+
   return (
     <AppShell title="Dashboard">
       <section className="grid grid-cols-2 gap-3">
         <div className="col-span-2 bg-card p-5 rounded-2xl shadow-[var(--shadow-soft)] border border-border">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Total prestado</p>
-          <div className="flex justify-between items-end mt-1">
-            <span className="font-mono text-3xl font-bold text-primary">$52,500</span>
-            <span className="font-mono text-xs text-success bg-success/10 px-2 py-1 rounded-full flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">trending_up</span>+12%
-            </span>
-          </div>
+          <p className="font-mono text-3xl font-bold text-primary mt-1">{fmt(stats.data?.totalLoaned ?? 0)}</p>
         </div>
-        <Stat label="Recuperado" value="$38,200" trend="+8%" trendClass="text-success" />
-        <Stat label="Pendiente" value="$14,300" trend="-5%" trendClass="text-destructive" />
+        <Stat label="Recuperado" value={fmt(stats.data?.recovered ?? 0)} tone="success" />
+        <Stat label="Pendiente" value={fmt(stats.data?.pending ?? 0)} tone="destructive" />
         <div className="col-span-2 p-4 rounded-2xl shadow-[var(--shadow-soft)] flex justify-between items-center" style={{ background: "var(--gradient-primary)" }}>
           <div className="text-primary-foreground">
-            <p className="text-xs opacity-80">Clientes activos</p>
-            <p className="font-mono text-2xl font-bold">15</p>
+            <p className="text-xs opacity-80">Clientes</p>
+            <p className="font-mono text-2xl font-bold">{stats.data?.clientsCount ?? 0}</p>
           </div>
-          <div className="bg-accent text-accent-foreground px-3 py-2 rounded-xl flex items-center gap-1 font-semibold text-sm">
-            <span className="material-symbols-outlined text-[18px]">person_add</span>+2 nuevos
-          </div>
+          <Link to="/clientes" className="bg-accent text-accent-foreground px-3 py-2 rounded-xl flex items-center gap-1 font-semibold text-sm">
+            <span className="material-symbols-outlined text-[18px]">person_add</span>Gestionar
+          </Link>
         </div>
       </section>
 
@@ -43,26 +49,44 @@ function Dashboard() {
           <div className="relative w-24 h-24 flex items-center justify-center">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 96 96">
               <circle cx="48" cy="48" r="40" fill="none" stroke="var(--muted)" strokeWidth="8" />
-              <circle cx="48" cy="48" r="40" fill="none" stroke="var(--primary)" strokeWidth="8" strokeDasharray="251.2" strokeDashoffset="67.8" strokeLinecap="round" />
+              <circle
+                cx="48" cy="48" r="40" fill="none" stroke="var(--primary)" strokeWidth="8"
+                strokeDasharray="251.2"
+                strokeDashoffset={251.2 - (251.2 * (stats.data?.paidPct ?? 0)) / 100}
+                strokeLinecap="round"
+              />
             </svg>
-            <span className="absolute font-mono font-bold">73%</span>
+            <span className="absolute font-mono font-bold">{stats.data?.paidPct ?? 0}%</span>
           </div>
           <div className="flex-1 space-y-2">
-            <Legend color="bg-primary" label="Pagado" value="73%" />
-            <Legend color="bg-muted" label="Pendiente" value="27%" />
+            <Legend color="bg-primary" label="Pagado" value={`${stats.data?.paidPct ?? 0}%`} />
+            <Legend color="bg-muted" label="Pendiente" value={`${100 - (stats.data?.paidPct ?? 0)}%`} />
           </div>
         </div>
       </section>
 
       <section className="mt-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-bold">Pagos próximos</h3>
+          <h3 className="text-base font-bold">Pagos recientes</h3>
           <Link to="/pagos" className="text-sm text-primary font-semibold">Ver todos</Link>
         </div>
         <div className="space-y-2">
-          <PaymentRow name="Juan" date="Vence hoy" amount="$100.00" warn />
-          <PaymentRow name="Ana" date="Mañana" amount="$200.00" />
-          <PaymentRow name="Luis" date="En 3 días" amount="$75.00" />
+          {recentPayments.length === 0 && <Empty text="Sin pagos todavía" />}
+          {recentPayments.map((p) => {
+            const name = (p.loans as { clients: { name: string } | null } | null)?.clients?.name ?? "Cliente";
+            return (
+              <div key={p.id} className="bg-card p-3 rounded-xl shadow-[var(--shadow-soft)] border-l-4 border-success flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary-soft text-primary flex items-center justify-center font-bold">{name[0]}</div>
+                  <div>
+                    <p className="font-semibold">{name}</p>
+                    <p className="text-xs text-muted-foreground">{p.payment_date} · {p.method}</p>
+                  </div>
+                </div>
+                <p className="font-mono font-semibold">{fmt(Number(p.amount))}</p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -72,21 +96,39 @@ function Dashboard() {
           <Link to="/prestamos" className="text-sm text-primary font-semibold">Ver todos</Link>
         </div>
         <div className="bg-card rounded-2xl shadow-[var(--shadow-soft)] border border-border overflow-hidden">
-          <LoanRow name="María" meta="12 meses · 5%" amount="$1,000" />
-          <LoanRow name="Carlos" meta="24 meses · 4.5%" amount="$2,500" />
-          <LoanRow name="Pedro" meta="6 meses · 8%" amount="$800" last />
+          {recentLoans.length === 0 && <div className="p-4"><Empty text="Sin préstamos todavía" /></div>}
+          {recentLoans.map((l, i) => {
+            const name = (l.clients as { name: string } | null)?.name ?? "—";
+            return (
+              <div key={l.id} className={`p-3 flex items-center justify-between ${i === recentLoans.length - 1 ? "" : "border-b border-border"}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent-soft text-accent-foreground flex items-center justify-center">
+                    <span className="material-symbols-outlined">person</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold">{name}</p>
+                    <p className="text-xs text-muted-foreground">{l.interest_rate}% · {l.loan_date}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono font-bold text-primary">{fmt(Number(l.amount))}</p>
+                  <p className="text-xs text-success font-semibold capitalize">{l.status}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </AppShell>
   );
 }
 
-function Stat({ label, value, trend, trendClass }: { label: string; value: string; trend: string; trendClass: string }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "success" | "destructive" }) {
+  const cls = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-foreground";
   return (
     <div className="bg-card p-4 rounded-2xl shadow-[var(--shadow-soft)] border border-border">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-mono text-lg font-bold mt-1">{value}</p>
-      <p className={`font-mono text-xs mt-1 ${trendClass}`}>{trend}</p>
+      <p className={`font-mono text-lg font-bold mt-1 ${cls}`}>{value}</p>
     </div>
   );
 }
@@ -103,37 +145,6 @@ function Legend({ color, label, value }: { color: string; label: string; value: 
   );
 }
 
-function PaymentRow({ name, date, amount, warn }: { name: string; date: string; amount: string; warn?: boolean }) {
-  return (
-    <div className={`bg-card p-3 rounded-xl shadow-[var(--shadow-soft)] border-l-4 ${warn ? "border-warning" : "border-border"} flex items-center justify-between`}>
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-primary-soft text-primary flex items-center justify-center font-bold">{name[0]}</div>
-        <div>
-          <p className="font-semibold">{name}</p>
-          <p className={`text-xs ${warn ? "text-warning-foreground bg-warning/40 px-2 py-0.5 rounded inline-block" : "text-muted-foreground"}`}>{date}</p>
-        </div>
-      </div>
-      <p className="font-mono font-semibold">{amount}</p>
-    </div>
-  );
-}
-
-function LoanRow({ name, meta, amount, last }: { name: string; meta: string; amount: string; last?: boolean }) {
-  return (
-    <div className={`p-3 flex items-center justify-between ${last ? "" : "border-b border-border"}`}>
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-accent-soft text-accent-foreground flex items-center justify-center">
-          <span className="material-symbols-outlined">person</span>
-        </div>
-        <div>
-          <p className="font-semibold">{name}</p>
-          <p className="text-xs text-muted-foreground">{meta}</p>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className="font-mono font-bold text-primary">{amount}</p>
-        <p className="text-xs text-success font-semibold">Activo</p>
-      </div>
-    </div>
-  );
+function Empty({ text }: { text: string }) {
+  return <p className="text-center text-sm text-muted-foreground py-3">{text}</p>;
 }
